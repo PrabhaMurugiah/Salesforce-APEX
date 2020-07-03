@@ -1,0 +1,83 @@
+public with sharing class MaintenanceRequestHelper {
+    
+    public static void updateWorkOrders(List<Case> UpdatedMRs,Map<Id,Case> oldMRmap) {
+        // TODO: Complete the method to update workorders
+        List<Case> closedMRs = new List<Case>();
+        List<Case> newroutineMRs = new List<Case>();     
+        List<Id> oldMR_Ids = new List<Id>();
+        
+        for (Case workMR:UpdatedMRs)
+        {
+         System.debug(workMR.status);
+         System.debug(oldMRmap.get(workMR.ID).Status);
+        IF ((workMR.Status == 'Closed' && (oldMRmap.get(workMR.ID)).Status <> 'Closed') && 
+              (workMR.Type == 'Repair' || workMR.Type == 'Routine Maintenance'))
+          {  
+            closedMRs.add(workMR);
+          oldMR_Ids.add(workMR.Id);
+                System.debug('MR ID: '+ workMR.Id);
+                System.debug('Closed MR creation');
+          }
+        }
+        
+        If (oldMR_Ids.size() > 0)
+        {    
+        Map<Id,Decimal> min_Maintenance =new Map<Id,Decimal>();
+        AggregateResult[] groupedResults = [select Maintenance_Request__R.ID MRID,MIN(Equipment__r.Maintenance_Cycle__c) MINMC 
+                                     from work_part__C where Maintenance_Request__C IN :oldMR_Ids
+                                     group by Maintenance_Request__r.Id];
+        for (AggregateResult ar:groupedResults)
+        {
+            System.debug('Min days: ' + ar.get('MINMC'));
+            min_Maintenance.put((Id)ar.get('MRID'),(Decimal)ar.get('MINMC'));
+            System.debug('Aggregate loop');
+        }   
+        
+        for (Case workMR:closedMRs)
+        {
+            Case newMR = new Case();
+            //newMR = workMR;
+            newMR.Type = 'Routine Maintenance';
+            newMR.Status = 'New';
+            newMR.Subject = 'Automatically created routine maintenance for old MR ' + workMr.CaseNumber;
+            newMR.Origin= 'Web';
+            newMR.Date_Reported__c = Date.today();
+            newMR.Equipment__c = workMR.Equipment__c;
+            Integer maint_cycle_days  = (Integer)min_Maintenance.get(workMR.ID);
+            If (maint_cycle_days == null)
+                 maint_cycle_days = 0;
+            System.debug('maint cycle:' + maint_cycle_days);
+            newMR.Date_Due__c = Date.Today().addDays(maint_cycle_days);
+            newMR.old_case__c = workMR.Id; 
+            System.debug('Old case: ' + newMR.old_case__C);
+            newMR.Vehicle__c = workMR.Vehicle__c;
+            
+            //newMR.Id = Null;
+            newroutineMRs.add(newMR);   
+            System.debug('new case creation loop');
+        }      
+        
+        insert newroutineMRs;
+        
+        update_related_work_parts(oldMR_Ids,newroutineMRs);
+        }    
+    }        
+    
+    public static void update_related_work_parts(List<Id> oldMR_Ids,List<Case> newroutineMRs){
+    List<Work_Part__c> related_work_parts = new List<Work_Part__c>();
+    related_work_parts = [select Id,Maintenance_Request__C from Work_Part__c where Maintenance_Request__C IN :oldMR_Ids];    
+    Map<Id,Id> Old_and_New_MR_map = new Map<Id,ID>();
+        
+        for (Case eachMR:newroutineMRs){
+            System.debug('old and new map loop');
+        Old_and_New_MR_map.put(eachMR.Old_case__C,eachMR.Id);    
+        }
+        
+        for (Work_part__c each_work_part:related_work_parts){
+            each_work_part.Maintenance_Request__c = Old_and_New_MR_map.get(each_work_part.Maintenance_Request__c);
+          System.debug('workpark update loop');
+        }
+        
+        update related_work_parts;
+    }
+}
