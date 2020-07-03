@@ -1,0 +1,14 @@
+@isTest
+private class WarehouseCalloutServiceTest {
+    // implement your mock callout test here
+@isTest
+    private static void testWarehouseCallout() {
+    Test.setMock(HttpCalloutMock.class, new WarehouseCalloutServiceMock());
+    Test.startTest();
+    WarehouseCalloutService.runWarehouseEquipmentSync();
+    Test.stopTest();
+    // runs callout and check results
+    
+    System.assertEquals(22, [select count() from Product2 where Replacement_Part__c =true]);
+  }
+}
